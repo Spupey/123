@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mine Clicker</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: #1a1a1a;
+      font-family: Arial, sans-serif;
+      color: #fff;
+    }
+    #gameCanvas {
+      border: 2px solid #444;
+      background: #2b2b2b;
+    }
+    #ui {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 10px;
+      border-radius: 5px;
+    }
+    button {
+      background: #555;
+      color: #fff;
+      border: none;
+      padding: 8px 16px;
+      margin: 5px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    button:hover {
+      background: #777;
+      transform: scale(1.05);
+    }
+    button:active {
+      transform: scale(0.95);
+    }
+    .resource {
+      margin: 5px 0;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <div id="ui">
+    <div class="resource">Coal: <span id="coal">0</span></div>
+    <div class="resource">Iron: <span id="iron">0</span></div>
+    <div class="resource">Diamonds: <span id="diamonds">0</span></div>
+    <div class="resource">Pickaxe Level: <span id="pickaxeLevel">1</span></div>
+    <div class="resource">Miners: <span id="miners">0</span></div>
+    <button onclick="upgradePickaxe()">Upgrade Pickaxe (Cost: <span id="pickaxeCost">100</span> Coal)</button>
+    <button onclick="hireMiner()">Hire Miner (Cost: 500 Coal)</button>
+  </div>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Game state
+    let gameState = {
+      coal: 0,
+      iron: 0,
+      diamonds: 0,
+      pickaxeLevel: 1,
+      pickaxeDamage: 1,
+      critChance: 0.1,
+      miners: 0,
+      block: { type: 'coal', hp: 10, maxHp: 10 },
+      level: 1,
+      particles: []
+    };
+
+    // Load progress
+    function loadGame() {
+      const saved = localStorage.getItem('mineClicker');
+      if (saved) {
+        gameState = JSON.parse(saved);
+        updateUI();
+      }
+    }
+
+    // Save progress
+    function saveGame() {
+      localStorage.setItem('mineClicker', JSON.stringify(gameState));
+    }
+
+    // Particle system
+    class Particle {
+      constructor(x, y, vx, vy, color, life) {
+        this.x = x;
+        this.y = y;
+        this.vx = vx;
+        this.vy = vy;
+        this.color = color;
+        this.life = life;
+        this.maxLife = life;
+      }
+
+      update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += 0.1; // Gravity
+        this.life--;
+      }
+
+      draw() {
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = this.life / this.maxLife;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Block types
+    const blockTypes = {
+      coal: { hp: 10, color: '#333', drop: 'coal' },
+      iron: { hp: 20, color: '#888', drop: 'iron' },
+      diamonds: { hp: 50, color: '#0ff', drop: 'diamonds' }
+    };
+
+    // Create new block
+    function newBlock() {
+      let type = 'coal';
+      if (gameState.level >= 5) type = Math.random() < 0.3 ? 'iron' : 'coal';
+      if (gameState.level >= 10) type = Math.random() < 0.2 ? 'diamonds' : Math.random() < 0.4 ? 'iron' : 'coal';
+      gameState.block = { type, hp: blockTypes[type].hp, maxHp: blockTypes[type].hp };
+    }
+
+    // Update UI
+    function updateUI() {
+      document.getElementById('coal').textContent = Math.floor(gameState.coal);
+      document.getElementById('iron').textContent = Math.floor(gameState.iron);
+      document.getElementById('diamonds').textContent = Math.floor(gameState.diamonds);
+      document.getElementById('pickaxeLevel').textContent = gameState.pickaxeLevel;
+      document.getElementById('miners').textContent = gameState.miners;
+      document.getElementById('pickaxeCost').textContent = 100 * gameState.pickaxeLevel;
+    }
+
+    // Upgrade pickaxe
+    window.upgradePickaxe = function() {
+      const cost = 100 * gameState.pickaxeLevel;
+      if (gameState.coal >= cost) {
+        gameState.coal -= cost;
+        gameState.pickaxeLevel++;
+        gameState.pickaxeDamage = gameState.pickaxeLevel;
+        gameState.critChance = Math.min(0.5, 0.1 + gameState.pickaxeLevel * 0.05);
+        updateUI();
+        saveGame();
+      }
+    };
+
+    // Hire miner
+    window.hireMiner = function() {
+      if (gameState.coal >= 500) {
+        gameState.coal -= 500;
+        gameState.miners++;
+        updateUI();
+        saveGame();
+      }
+    };
+
+    // Handle click
+    canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      if (x >= 300 && x <= 500 && y >= 200 && y <= 400) {
+        let damage = gameState.pickaxeDamage;
+        if (Math.random() < gameState.critChance) damage *= 2;
+        gameState.block.hp -= damage;
+        // Add particles
+        for (let i = 0; i < 10; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = Math.random() * 3 + 1;
+          gameState.particles.push(new Particle(
+            400, 300,
+            Math.cos(angle) * speed,
+            Math.sin(angle) * speed - 2,
+            blockTypes[gameState.block.type].color,
+            30
+          ));
+        }
+        if (gameState.block.hp <= 0) {
+          gameState[blockTypes[gameState.block.type].drop]++;
+          gameState.level++;
+          newBlock();
+          saveGame();
+        }
+        updateUI();
+      }
+    });
+
+    // Game loop
+    function gameLoop() {
+      // Update miners
+      if (gameState.miners > 0) {
+        gameState.block.hp -= gameState.miners * 0.5;
+        if (gameState.block.hp <= 0) {
+          gameState[blockTypes[gameState.block.type].drop]++;
+          gameState.level++;
+          newBlock();
+          saveGame();
+          updateUI();
+        }
+      }
+
+      // Update particles
+      gameState.particles = gameState.particles.filter(p => p.life > 0);
+      gameState.particles.forEach(p => p.update());
+
+      // Draw
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw block
+      ctx.fillStyle = blockTypes[gameState.block.type].color;
+      ctx.fillRect(300, 200, 200, 200);
+      // Health bar
+      ctx.fillStyle = '#f00';
+      ctx.fillRect(300, 180, 200 * (gameState.block.hp / gameState.block.maxHp), 10);
+      ctx.strokeStyle = '#000';
+      ctx.strokeRect(300, 180, 200, 10);
+      // Glow effect
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.fillRect(300, 200, 200, 200);
+
+      // Draw particles
+      gameState.particles.forEach(p => p.draw());
+
+      // Draw pickaxe animation (simplified)
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.moveTo(350, 250);
+      ctx.lineTo(400, 300);
+      ctx.lineTo(450, 250);
+      ctx.fill();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Start game
+    loadGame();
+    newBlock();
+    gameLoop();
+  </script>
+</body>
+</html>
